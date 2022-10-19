@@ -1,33 +1,36 @@
-from unicodedata import decimal
 import streamlit as st
 import pandas as pd
+import numpy as np
 
-def calcular_megas(df):
-    # Cambia la coma decimal por puntos
-    df[0] = [x.replace(',', '.') for x in df[0]]
-    #Convierte la columna a numérica
-    df[0] = pd.to_numeric(df[0], downcast="float")
-    # divide entre mil si son Kb para tenerlo todo en megas
-    df[2] = df1[0] if df1[1].to_string == "MiB" else df1[0] /1000
-    # devuelve la suma de megas con precision de 3 decimales
-    return df[2].sum().round()
+def calcular_megas(row):
+    match row['unidad']:
+        case "MiB": return row['cantidad']
+        case "GiB": return row['cantidad'] * 1000
+        case "KiB": return row['cantidad'] / 1000
+        case _: return 0
 
 csv_file = st.file_uploader(label = "Archivo CSV", type = ['csv'], help = "Texto de ayuda")
 if csv_file:
     dataframe = pd.read_csv(csv_file)
-    st.write(dataframe)
+    st.dataframe(dataframe)
 
     # Extrae cantidad y tipo de datos (Megas o Kbs)
-    df1 = dataframe[' Uso'].str.extractall(r"(\d*,?\d*)\b ([KM]iB)\b\w*")
+    df1 = dataframe[' Uso'].str.extractall(r"(\d*,?\d*)\b ([KGM]iB)\b\w*")
     df2 = df1.unstack()
     df2.columns = df2.columns.droplevel()
-    df2.iloc[:,2:4]
-    dataframe = dataframe.join(df2.iloc[:,2:4])
-    dataframe.rename(columns={2: "cantidad", 0: "unidad"}, inplace=True)
-    dataframe.columns
-    st.metric("Total", f"{calcular_megas(df1)} Mb")
-    st.bar_chart(dataframe,x="Fecha y hora", y=" Impacto")
-    
+    df2 = df2.iloc[:,[2,4]]
+    df2.rename(columns={2: 'cantidad', 1: 'unidad'}, inplace=True)
+    df2['cantidad'] = [x.replace(',', '.') for x in df2['cantidad']]
+    df2['cantidad'] = df2['cantidad'].astype(float)
+    df2['Megas'] = df2.apply(lambda row: calcular_megas(row), axis=1)
+    dataframe = dataframe.join(df2)
+
+    met1, met2, met3 = st.columns(3)
+    met2.metric('Mb Total', f"{dataframe['Megas'].sum().round()} Mb")
+    met3.metric('Mb Roaming', f"{dataframe.loc[dataframe[' Roaming'] == 'Y']['Megas'].sum().round()} Mb")
+    #met3.metric('Recargas en periodo', f"{dataframe.loc[dataframe[' Tipo'] == 'Recargar'][' Impacto en el saldo'].astype(float).sum()}")
+
+    st.bar_chart(dataframe,x="Fecha y hora", y="Megas")
 else:
     st.info("Sube el archivo .csv obtenido al exportar el Histórico en Qvantel.")
 
